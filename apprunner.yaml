@@ -4,9 +4,5 @@ build:
   commands:
     build:
       - composer install --no-dev --optimize-autoloader
-  env:
-    - name: APP_ENV
-      value: production
 run:
-  # Since you are already in /brandbased, artisan is right here
   command: php artisan serve --host 0.0.0.0 --port 8080
