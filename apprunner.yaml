@@ -1,0 +1,9 @@
+version: 1.0
+runtime: php81
+build:
+  commands:
+    - composer install --no-dev --optimize-autoloader
+run:
+  command: vendor/bin/heroku-php-apache2 public/
+  network:
+    port: 8080
