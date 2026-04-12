@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BrandController; // Ensure this matches your controller path
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -20,10 +21,16 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
+// --- NEW: Python Engine Callback ---
+// This must be public so the Python service can reach it. 
+// In production, we should protect this with an API Key or IP whitelist.
+Route::post('/brands/{id}/status-update', [BrandController::class, 'updateStatus']);
+
 // Health Check / Debug
 Route::post('/test-post', function() {
     return response()->json(['message' => 'Post working!']);
 });
+
 
 /*
 |--------------------------------------------------------------------------
@@ -37,8 +44,10 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
-    // --- NEW: PIN Management ---
-    // This is the separate process to set/update the PIN after login
+    // --- NEW: Brand Management ---
+    Route::post('/brands/store', [BrandController::class, 'store']);
+
+    // --- PIN Management ---
     Route::post('/auth/set-pin', [AuthController::class, 'updatePin']);
 
     // Application Routes
