@@ -21,10 +21,13 @@ Route::post('/auth/login', [AuthController::class, 'login']);
 Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
 Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
-// --- NEW: Python Engine Callback ---
-// This must be public so the Python service can reach it. 
-// In production, we should protect this with an API Key or IP whitelist.
+
+Route::middleware(['api', 'auth:sanctum'])->group(function () {
+    Route::post('/brands', [BrandController::class, 'store']);
+});
+
 Route::post('/brands/{id}/status-update', [BrandController::class, 'updateStatus']);
+
 
 // Health Check / Debug
 Route::post('/test-post', function() {
@@ -55,4 +58,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // Session Management
     Route::post('/auth/logout', [AuthController::class, 'logout']);
+
+    Route::get('/user/dashboard-status', [BrandController::class, 'getDashboardStatus']);
+    Route::get('/user/brands', [BrandController::class, 'index']);
 });

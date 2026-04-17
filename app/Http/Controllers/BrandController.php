@@ -10,72 +10,117 @@ use Illuminate\Support\Str;
 
 class BrandController extends Controller
 {
+
+    public function index(Request $request)
+    {
+        try {
+            // Fetch brands belonging only to the logged-in user
+            $brands = Brand::where('user_id', $request->user()->id)->get();
+
+            return response()->json([
+                'status' => 'success',
+                'brands' => $brands
+            ], 200);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve brands.',
+                'debug' => $e->getMessage()
+            ], 500);    
+        }
+    }
     /**
      * Store a new brand with a logo uploaded to S3.
      */
    public function store(Request $request)
-{
-    // 1. Basic Validation
-    $request->validate([
-        'brand_name' => 'required|string|max:255',
-        'logo' => 'required|image|max:2048',
-        'website_url' => 'nullable|url',
-    ]);
+    {
+        $user = $request->user();
 
-    try {
-        if (!$request->hasFile('logo')) {
-            return response()->json(['error' => 'No file found in request. Check your HTML form enctype.'], 400);
+        if (!$user) {
+            return response()->json(['message' => 'User session not found.'], 401);
         }
 
-        $file = $request->file('logo');
-        $slug = \Illuminate\Support\Str::slug($request->brand_name);
-        $fileName = time() . '_' . $slug . '.' . $file->getClientOriginalExtension();
-        $path = "brands/{$slug}/logos";
-
-        // 2. Deep Debug Attempt
-        // We are REMOVING 'public' here to ensure ACLs aren't the cause of the failure.
-        $disk = \Illuminate\Support\Facades\Storage::disk('s3');
-        
-        $uploadedPath = $disk->putFileAs($path, $file, $fileName);
-
-        // 3. If successful, proceed
-        $s3Url = $disk->url($uploadedPath);
-
-        $brand = Brand::create([
-            'brand_name'  => $request->brand_name,
-            'slug'        => $slug,
-            'website_url' => $request->website_url, // Now storing from the request
-            'logo_url'    => $s3Url,
-            'status'      => 'pending', // Default status for Python worker to find
-            'is_active'   => true
+        $request->validate([
+            'brand_name'  => 'required|string|max:255',
+            'website_url' => 'nullable|url',
+            'light_logo'  => 'required|file|mimes:svg|max:5120', // 5MB limit
+            'dark_logo'   => 'required|file|mimes:svg|max:5120',
         ]);
 
-        return response()->json(['success' => true, 'url' => $s3Url]);
+        try {
+            $timestamp = time();
+            $lightUrl = null;
+            $darkUrl = null;
 
-    } catch (\Throwable $e) {
-        // 4. THE DEBUG ENGINE
-        // This looks for the "Previous" exception which contains the RAW AWS error
-        $previous = $e->getPrevious();
-        
-        return response()->json([
-            'error_type' => get_class($e),
-            'main_message' => $e->getMessage(),
-            's3_raw_error' => $previous ? $previous->getMessage() : 'No internal driver error reported',
-            'debug_info' => [
-                'bucket' => config('filesystems.disks.s3.bucket'),
-                'region' => config('filesystems.disks.s3.region'),
-                'file_size' => $request->file('logo')->getSize(),
-                'mime_type' => $request->file('logo')->getMimeType(),
-                'line' => $e->getLine()
-            ],
-            'env_check' => [
-                'has_key' => !empty(config('filesystems.disks.s3.key')),
-                'has_secret' => !empty(config('filesystems.disks.s3.secret')),
-                'region_env' => env('AWS_DEFAULT_REGION'),
-            ]
-        ], 500);
+            // 1. Generate a Unique Slug
+            $baseSlug = \Illuminate\Support\Str::slug($request->brand_name);
+            $slug = $baseSlug;
+            $count = 1;
+            
+            // Check if slug exists and append number if necessary
+            while (\App\Models\Brand::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $count;
+                $count++;
+            }
+
+            // 2. Upload Files to S3
+            if ($request->hasFile('light_logo')) {
+                $lightPath = "brands/logos/{$user->id}/light_{$timestamp}.svg";
+                \Illuminate\Support\Facades\Storage::disk('s3')->put($lightPath, file_get_contents($request->file('light_logo')), [
+                    'visibility' => 'public',
+                    'ContentType' => 'image/svg+xml'
+                ]);
+                $lightUrl = \Illuminate\Support\Facades\Storage::disk('s3')->url($lightPath);
+            }
+
+            if ($request->hasFile('dark_logo')) {
+                $darkPath = "brands/logos/{$user->id}/dark_{$timestamp}.svg";
+                \Illuminate\Support\Facades\Storage::disk('s3')->put($darkPath, file_get_contents($request->file('dark_logo')), [
+                    'visibility' => 'public',
+                    'ContentType' => 'image/svg+xml'
+                ]);
+                $darkUrl = \Illuminate\Support\Facades\Storage::disk('s3')->url($darkPath);
+            }
+
+           // 3. Save to Database
+            $brand = \App\Models\Brand::create([
+                'user_id'                => $user->id,
+                'brand_name'             => $request->brand_name,
+                'slug'                   => $slug,
+                'website_url'            => $request->website_url,
+                'logo_light_url'         => $lightUrl,
+                'logo_dark_url'          => $darkUrl,
+                
+                // --- Stage 1: Identity ---
+                'identity_status'        => 'pending',
+                'identity_progress'      => 55, // Starting value for the red bar
+                
+                // --- Stage 2: Meta ---
+                'meta_status'            => 'waiting',
+                'meta_verification_code' => \Illuminate\Support\Str::random(32), // Generate the string they must copy
+                
+                // Global Status
+                'status'                 => 'pending', 
+            ]);
+
+            return response()->json([
+                'success' => true, 
+                'brand'   => $brand, // This now includes the identity progress and meta code
+                'message' => 'Brand created. Identity verification in progress.'
+            ], 201);
+
+        } catch (\Exception $e) {
+            // Optional: Delete uploaded files from S3 if DB save fails
+            // if ($lightPath) \Storage::disk('s3')->delete($lightPath);
+
+            return response()->json([
+                'error_type'   => get_class($e),
+                'main_message' => 'An error occurred while saving the brand.',
+                'debug'        => $e->getMessage(), // Remove 'debug' in production
+            ], 500);
+        }
     }
-}
     /**
      * Update brand status (Callback for external services)
      */
@@ -89,5 +134,45 @@ class BrandController extends Controller
         ]);
 
         return response()->json(['success' => true]);
+    }
+    public function getDashboardStatus(Request $request)
+    {
+        $user = $request->user();
+
+        // 1. Count total brands owned by user
+        $brandCount = \App\Models\Brand::where('user_id', $user->id)->count();
+
+        // 2. Check if any brand is currently 'pending'
+        $hasPending = \App\Models\Brand::where('user_id', $user->id)
+                                    ->where('status', 'pending')
+                                    ->exists();
+
+        // 3. Determine Plan (For now, we can check a column or default to 'free')
+        // If you don't have a 'plan' column yet, we'll default to 'free'
+        $plan = $user->plan ?? 'free'; 
+
+        return response()->json([
+            'plan' => $plan,
+            'brand_count' => $brandCount,
+            'has_pending' => $hasPending,
+            'max_limit' => 12
+        ]);
+    }
+    public function getBrandStatus($id)
+    {
+        $brand = Brand::findOrFail($id);
+
+        return response()->json([
+            'brand_name' => $brand->brand_name,
+            'identity' => [
+                'status' => $brand->identity_status,
+                'progress' => $brand->identity_progress
+            ],
+            'meta' => [
+                'status' => $brand->meta_status,
+                'code' => $brand->meta_verification_code
+            ],
+            'overall_status' => $brand->status
+        ]);
     }
 }

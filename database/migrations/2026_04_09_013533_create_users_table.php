@@ -9,14 +9,17 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void {
+    public function up(): void
+    {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+            $table->string('name')->nullable(); // Added nullable just in case
             $table->string('email')->unique();
             $table->string('password');
-            $table->string('pin')->nullable(); // For your security PIN logic
-            $table->string('status')->default('active');
-            $table->rememberToken();
+            
+            $table->enum('plan', ['free', 'premium'])->default('free');
+            $table->integer('max_brands')->default(1); 
+            
             $table->timestamps();
         });
     }

@@ -92,9 +92,18 @@ class AuthController extends Controller
             'status'   => 'active'
         ]);
 
+        // 2. Now generate the token for this specific user
+        $token = $user->createToken('auth_token')->plainTextToken;
+
         $temp->delete();
 
-        return response()->json(['message' => 'Registration complete. You can now login.'], 201);
+        // 3. Return the token so React can save it to localStorage
+        return response()->json([
+            'message' => 'Registration complete.',
+            'access_token' => $token,
+            'token_type' => 'Bearer',
+            'user' => $user
+        ], 201);
     }
 
     /**
@@ -131,12 +140,21 @@ class AuthController extends Controller
             return response()->json(['message' => 'Invalid credentials.'], 401);
         }
 
+        // Delete existing tokens if you want to allow only one session at a time (Optional)
+        // $user->tokens()->delete();
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'message'      => 'Login successful',
             'access_token' => $token,
-            'token_type'   => 'Bearer'
+            'token_type'   => 'Bearer',
+            // --- ADD THIS SECTION ---
+            'user' => [
+                'id'    => $user->id,
+                'email' => $user->email,
+                'name'  => $user->name, // If you have a name field
+            ]
         ]);
     }
 
