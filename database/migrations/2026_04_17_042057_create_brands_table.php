@@ -20,10 +20,13 @@ return new class extends Migration
             $table->string('logo_dark_url')->nullable();
 
             // Verification Stages
-            $table->enum('identity_status', ['pending','inprogress','verified', 'rejected'])->default('pending');
-            $table->integer('identity_progress')->default(0); 
-            $table->enum('meta_status', ['waiting', 'pending', 'verified', 'failed'])->default('waiting');
-            $table->string('meta_verification_code')->nullable();
+            $table->string('identity_status')->default('pending');
+            $table->text('identity_verification_notes')->nullable();
+            $table->text('identity_progress')->default(0);
+
+            $table->string('meta_status')->default('pending');
+            $table->text('meta_verification_notes')->nullable();
+            $table->text('meta_progress')->default(0);
 
             $table->enum('status', ['pending', 'active', 'rejected'])->default('pending');
             $table->timestamps();

@@ -61,4 +61,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/user/dashboard-status', [BrandController::class, 'getDashboardStatus']);
     Route::get('/user/brands', [BrandController::class, 'index']);
+    Route::get('/brands/pending', [BrandController::class, 'getPendingBrand']);
+    Route::get('/brands/{id}', [BrandController::class, 'getBrandById']);
 });

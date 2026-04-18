@@ -97,7 +97,7 @@ class BrandController extends Controller
                 'identity_progress'      => 55, // Starting value for the red bar
                 
                 // --- Stage 2: Meta ---
-                'meta_status'            => 'waiting',
+                'meta_status'            => 'pending',
                 'meta_verification_code' => \Illuminate\Support\Str::random(32), // Generate the string they must copy
                 
                 // Global Status
@@ -129,12 +129,37 @@ class BrandController extends Controller
         $brand = Brand::findOrFail($id);
         
         $brand->update([
-            'status'             => $request->status,
+            'identity_status'             => $request->status,
             'verification_notes' => $request->notes
         ]);
 
         return response()->json(['success' => true]);
     }
+    public function getPendingBrand(Request $request) 
+    {
+        $userId = $request->user()->id;
+        
+        // Statuses that the Python processor will eventually flip to 'verified'
+        $working = ['pending', 'inprogress', 'under review'];
+
+        $pendingBrand = Brand::where('user_id', $userId)
+            ->where(function ($query) use ($working) {
+                // Check if Step 1 (Identity) is still processing
+                $query->whereIn('identity_status', $working)
+                // OR Step 2 (Meta) is still processing
+                    ->orWhereIn('meta_status', $working);
+            })
+            // We only want the latest one they were working on
+            ->latest() 
+            ->first();
+
+        if (!$pendingBrand) {
+            return response()->json(['brand' => null], 200);
+        }
+
+        return response()->json(['brand' => $pendingBrand], 200);
+    }
+
     public function getDashboardStatus(Request $request)
     {
         $user = $request->user();
@@ -157,6 +182,17 @@ class BrandController extends Controller
             'has_pending' => $hasPending,
             'max_limit' => 12
         ]);
+    }
+    public function getBrandById(Request $request, $id) 
+    {
+        $userId = $request->user()->id;
+        $brand = Brand::where('user_id', $userId)->where('id', $id)->first();
+
+        if (!$brand) {
+            return response()->json(['message' => 'Brand not found'], 404);
+        }
+
+        return response()->json(['brand' => $brand], 200);
     }
     public function getBrandStatus($id)
     {

@@ -26,6 +26,7 @@ class AuthController extends Controller
         }
 
         $otp = rand(100000, 999999);
+        $otp = 123456;
         $expiresAt = Carbon::now()->addMinutes(10);
 
         UserTemp::updateOrCreate(

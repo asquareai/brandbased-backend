@@ -11,14 +11,16 @@ class Brand extends Model
     protected $fillable = [
         'user_id', 
         'brand_name', 
-        'slug', // <--- ADD THIS LINE
+        'slug',
         'website_url', 
         'logo_light_url', 
         'logo_dark_url', 
         'identity_status', 
+        'identity_verification_notes', 
         'identity_progress',
         'meta_status',
-        'meta_verification_code',
+        'meta_verification_notes',     
+        'meta_progress',
         'status'
     ];
 }
